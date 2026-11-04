@@ -1,0 +1,45 @@
+[Unit]
+Description=Telegram training coach agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coach
+Group=coach
+# Package (read-only):   /opt/coach-agent/venv
+# Instance (read-only):  /etc/coach-agent       config.yaml, .env, athlete/, prompt overrides
+# State (writable):      /var/lib/coach-agent   database, OAuth tokens, service user's home
+EnvironmentFile=/etc/coach-agent/.env
+Environment=HOME=/var/lib/coach-agent
+Environment=COACH_CONFIG=/etc/coach-agent/config.yaml
+WorkingDirectory=/var/lib/coach-agent
+StateDirectory=coach-agent
+StateDirectoryMode=0750
+# Run via the venv's python (a symlink to the system interpreter) so SELinux sees a bin_t entrypoint.
+ExecStart=/opt/coach-agent/venv/bin/python -m coach.main
+Restart=on-failure
+RestartSec=10
+
+# Hardening: outbound HTTPS only, nothing writable except the state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/coach-agent
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

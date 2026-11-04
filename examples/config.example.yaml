@@ -1,0 +1,92 @@
+# coach-agent instance configuration.
+# Install as /etc/coach-agent/config.yaml (or point COACH_CONFIG / -c at it).
+# Secrets live in .env beside this file and are referenced as ${VAR}.
+# Relative paths below resolve against this directory first, then the packaged defaults,
+# so copy a prompt here only if you want to change it.
+
+timezone: UTC                        # your IANA timezone, e.g. Europe/London, America/Denver
+data_dir: ${COACH_DATA_DIR:-data}    # database lives here; /var/lib/coach-agent/data for systemd
+
+athlete:
+  name: the athlete                  # how the assistant refers to you
+  language: English                  # e.g. "Australian English", "British English"
+
+telegram:
+  # Send /whoami to your bot to get this; only these chats can talk to the agent.
+  allowed_chat_ids: [0]              # REQUIRED: your chat id from /whoami (0 = not set yet)
+  default_chat_id: 0                 # where scheduled messages and reminders go
+  ipv4_only: false                   # true if the host's IPv6 route is broken (startup "Timed out")
+  connect_timeout: 15                # seconds
+  read_timeout: 30                   # seconds
+  # proxy: http://proxy.example.lan:3128   # only if Telegram must go through a proxy
+
+agent:
+  model: claude-sonnet-5-5           # chat and default job model
+  max_turns: 20                      # tool-use turns per request
+  max_budget_usd: 0.50               # hard cap per request
+  session_max_age_hours: 16          # chats older than this start fresh
+  # [] ignores all Claude Code settings on the host. If the agent can't see the Intervals
+  # sign-in, set to [user] so it loads the server exactly as `claude mcp add` registered it.
+  setting_sources: []
+  system_prompt_file: prompts/system.md
+  context_files:
+    - athlete/profile.md             # your goals and constraints; see examples/athlete-profile.example.md
+
+# MCP servers. Tool names become mcp__<key>__<tool>.
+mcp_servers:
+  # The official Intervals.icu Connector (hosted, OAuth). No token goes here: sign in once
+  # with `claude mcp login intervals` as the service user. The CLI stores and refreshes the
+  # OAuth tokens in that user's home. Keep the key name `intervals` and this URL identical
+  # to what you registered with `claude mcp add`.
+  intervals:
+    type: http
+    url: https://mcp.intervals.icu/mcp
+
+# Allow-list. Anything not here is denied. Wildcards allowed per server.
+allowed_tools:
+  - mcp__intervals__get_orientation
+  - mcp__intervals__get_status
+  - mcp__intervals__list_activities
+  - mcp__intervals__get_activity
+  - mcp__intervals__get_fitness
+  - mcp__intervals__get_wellness
+  - mcp__intervals__get_plan
+  - mcp__intervals__get_best_efforts
+  - mcp__intervals__get_sft_analysis
+  - mcp__intervals__preview_workout
+  - mcp__coach__*
+  # Write tools: off by default. Enable deliberately, one at a time.
+  # - mcp__intervals__log_wellness
+  # - mcp__intervals__schedule_workout
+  # - mcp__intervals__update_planned_workout
+
+# Shared journal (Google Sheet) that bridges Telegram and claude.ai conversations.
+# See the README "Shared journal" section for the service-account setup.
+journal:
+  enabled: false
+  spreadsheet_id: "your-spreadsheet-id"         # from the sheet URL: /spreadsheets/d/<id>/edit
+  sheet: Journal                                # tab name
+  credentials_file: google-service-account.json # relative to this directory; chmod 640 root:coach
+  channel: Telegram                             # value written in the Channel column
+  context_days: 14                              # recent entries loaded into every conversation
+  context_max_rows: 40
+
+jobs:
+  morning_briefing:
+    cron: "40 6 * * *"               # 06:40 daily, in `timezone`
+    prompt_file: prompts/morning_briefing.md
+    model: claude-opus-5-5           # the one call a day worth the stronger model
+    retry_token: DATA_NOT_READY      # if the watch hasn't synced, try again...
+    retry_minutes: 45                # ...45 min later...
+    max_retries: 2                   # ...up to twice, then report what's there
+    journal_topic: Morning brief     # delivered briefs are also logged to the journal
+
+  upcoming_scan:
+    cron: "0 18 * * *"               # 18:00 daily: create reminders for tests/races
+    prompt_file: prompts/upcoming_scan.md
+    silent_token: NOTHING_TO_REPORT
+
+  weekly_review:
+    enabled: false                   # example of adding a job: flip to true
+    cron: "0 19 * * 0"               # Sunday 19:00
+    prompt_file: prompts/weekly_review.md

@@ -1,0 +1,14 @@
+# Instance and state never belong in the repo.
+.env
+config.yaml
+athlete/
+data/
+instance/
+# Build and tooling
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/

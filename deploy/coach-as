@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run a command as the 'coach' service user, exactly as the systemd service sees things:
+# /etc/coach-agent/.env loaded, the venv (with the bundled `claude` CLI) first on PATH,
+# HOME and the working directory set to /var/lib/coach-agent.
+#
+#   coach-as claude mcp list
+#   coach-as coach-agent --ask "Call get_status and report auth_mode and connected"
+#   coach-as sqlite3 /var/lib/coach-agent/data/coach.db '.tables'
+set -euo pipefail
+ETC=/etc/coach-agent
+VENV=/opt/coach-agent/venv
+STATE=/var/lib/coach-agent
+USER_NAME=coach
+[[ $# -gt 0 ]] || { echo "usage: coach-as <command> [args...]" >&2; exit 2; }
+
+# shellcheck disable=SC2016  # $PATH and "$@" must expand in the inner shell, not here
+INNER='set -a; . '"$ETC"'/.env; set +a
+export HOME='"$STATE"' COACH_CONFIG='"$ETC"'/config.yaml PATH='"$VENV"'/bin:$PATH
+cd '"$STATE"'
+exec "$@"'
+
+if [[ $EUID -eq 0 ]] && command -v runuser >/dev/null; then
+  exec runuser -u "$USER_NAME" -- bash -c "$INNER" coach-as "$@"
+else
+  exec sudo -u "$USER_NAME" -H bash -c "$INNER" coach-as "$@"
+fi
